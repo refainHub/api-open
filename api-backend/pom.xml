@@ -117,6 +117,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>cn.sfcoder</groupId>
+            <artifactId>api-client-sdk</artifactId>
+            <version>0.0.2</version>
+        </dependency>
+
     </dependencies>
 
     <build>

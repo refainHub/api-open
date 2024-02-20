@@ -1,21 +1,23 @@
 package cn.sfcoder.springbootinit.controller;
 
+import cn.sfcoder.apiinterfacesdk.client.ApiClient;
 import cn.sfcoder.springbootinit.annotation.AuthCheck;
-import cn.sfcoder.springbootinit.common.BaseResponse;
-import cn.sfcoder.springbootinit.common.DeleteRequest;
-import cn.sfcoder.springbootinit.common.ErrorCode;
-import cn.sfcoder.springbootinit.common.ResultUtils;
+import cn.sfcoder.springbootinit.common.*;
 import cn.sfcoder.springbootinit.constant.CommonConstant;
 import cn.sfcoder.springbootinit.exception.BusinessException;
 import cn.sfcoder.springbootinit.model.dto.interfaceinfo.InterfaceInfoAddRequest;
+import cn.sfcoder.springbootinit.model.dto.interfaceinfo.InterfaceInfoInvokeRequest;
 import cn.sfcoder.springbootinit.model.dto.interfaceinfo.InterfaceInfoQueryRequest;
 import cn.sfcoder.springbootinit.model.dto.interfaceinfo.InterfaceInfoUpdateRequest;
 import cn.sfcoder.springbootinit.model.entity.InterfaceInfo;
 import cn.sfcoder.springbootinit.model.entity.User;
+import cn.sfcoder.springbootinit.model.enums.InterfaceInfoStatusEnum;
 import cn.sfcoder.springbootinit.service.InterfaceInfoService;
 import cn.sfcoder.springbootinit.service.UserService;
+
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.google.gson.Gson;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
@@ -40,6 +42,9 @@ public class InterfaceInfoController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private ApiClient apiClient;
 
     // region 增删改查
 
@@ -96,6 +101,7 @@ public class InterfaceInfoController {
         return ResultUtils.success(b);
     }
 
+
     /**
      * 更新
      *
@@ -127,6 +133,7 @@ public class InterfaceInfoController {
         boolean result = interfaceInfoService.updateById(interfaceInfo);
         return ResultUtils.success(result);
     }
+
 
     /**
      * 根据 id 获取
@@ -194,6 +201,98 @@ public class InterfaceInfoController {
         return ResultUtils.success(interfaceInfoPage);
     }
 
+    /**
+     * 发布
+     *
+     */
+    @PostMapping("/online")
+    @AuthCheck(mustRole = "admin")
+    public BaseResponse<Boolean>onlineInterfaceInfo(@RequestBody IdRequest idRequest,
+                                                    HttpServletRequest request){
+        if(idRequest==null || idRequest.getId()<0){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        long id=idRequest.getId();
+        //判断是否存在
+        InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
+        if(oldInterfaceInfo==null){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        //判断该接口是否可以调用
+        cn.sfcoder.apiinterfacesdk.model.User user=new cn.sfcoder.apiinterfacesdk.model.User();
+        user.setUsername("test");
+        String username=apiClient.getUsernameByPost(user);
+        if(StringUtils.isBlank(username)){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"接口验证失败");
+
+        }
+        //仅本人或管理员可以修改
+        InterfaceInfo interfaceInfo=new InterfaceInfo();
+        interfaceInfo.setId(id);
+        interfaceInfo.setStatus(InterfaceInfoStatusEnum.ONLINE.getValue());
+        boolean result = interfaceInfoService.updateById(interfaceInfo);
+        return ResultUtils.success(result);
+
+    }
+
+    /**
+     * 下线
+     *
+     */
+    @PostMapping("/offline")
+    @AuthCheck(mustRole = "admin")
+    public BaseResponse<Boolean>offlineInterfaceInfo(@RequestBody IdRequest idRequest,
+                                                    HttpServletRequest request){
+        if(idRequest==null || idRequest.getId()<0){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        long id=idRequest.getId();
+        //判断是否存在
+        InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
+        if(oldInterfaceInfo==null){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        //仅本人或管理员可以修改
+        InterfaceInfo interfaceInfo=new InterfaceInfo();
+        interfaceInfo.setId(id);
+        interfaceInfo.setStatus(InterfaceInfoStatusEnum.OFFLINE.getValue());
+        boolean result = interfaceInfoService.updateById(interfaceInfo);
+        return ResultUtils.success(result);
+
+    }
+
+    /**
+     * 测试调用
+     *
+     */
+
+    @PostMapping("/invoke")
+    public BaseResponse<Object>invokeInterfaceInfo(@RequestBody InterfaceInfoInvokeRequest interfaceInfoInvokeRequest,
+                                                    HttpServletRequest request) {
+        if(interfaceInfoInvokeRequest==null || interfaceInfoInvokeRequest.getId()<0){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        long id=interfaceInfoInvokeRequest.getId();
+        String userRequestParams = interfaceInfoInvokeRequest.getUserRequestParams();
+        //判断是否存在
+        InterfaceInfo oldInterfaceInfo = interfaceInfoService.getById(id);
+        if(oldInterfaceInfo==null){
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        if(oldInterfaceInfo.getStatus()==InterfaceInfoStatusEnum.OFFLINE.getValue()){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"接口已关闭");
+        }
+        User loginUser=userService.getLoginUser(request);
+        String accessKey = loginUser.getAccessKey();
+        String secretKey = loginUser.getSecretKey();
+
+        ApiClient tmpClient=new ApiClient(accessKey,secretKey);
+        Gson gson=new Gson();
+        cn.sfcoder.apiinterfacesdk.model.User user=gson.fromJson(userRequestParams,cn.sfcoder.apiinterfacesdk.model.User.class);
+        String result =tmpClient.getUsernameByPost(user);
+        return ResultUtils.success(result);
+
+    }
 
 
 }
